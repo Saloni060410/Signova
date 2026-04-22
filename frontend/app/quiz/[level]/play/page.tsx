@@ -46,6 +46,7 @@ export default function QuizPlayPage() {
   const [isRecording, setIsRecording] = useState(false)
   const [hasRecording, setHasRecording] = useState(false)
   const [cameraScore, setCameraScore] = useState<number | null>(null)
+  const [hardVerdict, setHardVerdict] = useState<{ expected: string; predicted: string; correct: boolean; confidence: number } | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -209,6 +210,7 @@ export default function QuizPlayPage() {
   const startRecording = async () => {
     setIsRecording(true)
     setCameraScore(null)
+    setHardVerdict(null)
     setHasRecording(false)
     hardPredictionsRef.current = []
     hardSessionRef.current =
@@ -276,6 +278,13 @@ export default function QuizPlayPage() {
       computedScore = Math.round((0.5 * matchRate + 0.35 * avgMatchConfidence + 0.15 * bestMatchConfidence) * 100)
     }
     computedScore = Math.max(0, Math.min(100, computedScore))
+
+    setHardVerdict({
+      expected,
+      predicted: majorityLabel,
+      correct: majorityLabel === expected,
+      confidence: majorityRate > 0 ? Math.round(majorityRate * 100) / 100 : 0,
+    })
 
     setCameraScore(computedScore)
     setAnswers((prev) => {
@@ -436,7 +445,7 @@ export default function QuizPlayPage() {
               <Card className="bg-card/50 border-border/50">
                 <CardHeader><CardTitle>Sign This</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="p-6 rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 border border-primary/10">
+                  <div className="p-6 rounded-xl bg-linear-to-br from-primary/5 to-accent/5 border border-primary/10">
                     <p className="text-xl font-medium text-foreground text-center">"{question.sign}"</p>
                   </div>
                   <Button variant="ghost" size="sm" className="mt-3 w-full" onClick={() => speakSign(question.sign)}>
@@ -447,11 +456,20 @@ export default function QuizPlayPage() {
 
               {cameraScore !== null && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                  <Card className="bg-gradient-to-br from-primary/10 to-accent/10 border-primary/20">
+                  <Card className="bg-linear-to-br from-primary/10 to-accent/10 border-primary/20">
                     <CardContent className="p-6 text-center">
                       <p className="text-sm text-muted-foreground mb-1">Your Score</p>
                       <div className="text-4xl font-bold text-primary mb-3">{cameraScore}%</div>
                       <Progress value={cameraScore} className="h-2 mb-4" />
+                      {hardVerdict && (
+                        <div className="mb-4 rounded-xl border border-border/60 bg-background/60 p-4 text-left text-sm">
+                          <p><span className="font-medium">Expected:</span> {hardVerdict.expected}</p>
+                          <p><span className="font-medium">Predicted:</span> {hardVerdict.predicted}</p>
+                          <p>
+                            <span className="font-medium">Result:</span> {hardVerdict.correct ? "Correct" : "Incorrect"}
+                          </p>
+                        </div>
+                      )}
                       <Button className="w-full" onClick={handleNext}>
                         {currentIdx < questions.length - 1 ? "Next Sentence" : "See Results"}
                       </Button>
@@ -498,7 +516,7 @@ export default function QuizPlayPage() {
                 </h2>
 
                 {/* Sign display */}
-                <div className="aspect-square max-w-xs mx-auto rounded-2xl bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center mb-8">
+                <div className="aspect-square max-w-xs mx-auto rounded-2xl bg-linear-to-br from-primary/10 to-accent/10 flex items-center justify-center mb-8">
                   {question?.video_url ? (
                     <video
                       src={question.video_url}

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.models.user_model import User
 from app.schemas.user_schema import SignupRequest, LoginRequest, TokenResponse, UserOut
-from app.utils.auth_utils import hash_password, verify_password, create_access_token
+from app.utils.auth_utils import hash_password, verify_password, create_access_token, get_current_user
 
 router = APIRouter()
 
@@ -46,8 +46,5 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-async def me(db: AsyncSession = Depends(get_db),
-             current_user: User = Depends(lambda: None)):
-    # JWT protected – imported inline to avoid circular import
-    from app.utils.auth_utils import get_current_user
-    raise HTTPException(status_code=501, detail="Use /auth/me with token")
+async def me(current_user: User = Depends(get_current_user)):
+    return UserOut.model_validate(current_user)

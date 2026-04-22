@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [data, setData] = useState<DashboardData | null>(null)
   const [fetching, setFetching] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && !user) router.replace("/")
@@ -49,13 +50,41 @@ export default function DashboardPage() {
     fetch(`${API}/dashboard/${user.id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          const payload = await r.json().catch(() => null)
+          throw new Error(payload?.detail ?? `Dashboard request failed (${r.status})`)
+        }
+        return r.json()
+      })
       .then(setData)
-      .catch(console.error)
+      .catch((err: unknown) => {
+        console.error(err)
+        setError(err instanceof Error ? err.message : "Failed to load dashboard")
+      })
       .finally(() => setFetching(false))
   }, [user, token])
 
   if (loading || fetching || !data) {
+    if (error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4 text-center">
+          <div className="max-w-md space-y-4">
+            <h1 className="text-2xl font-bold text-foreground">Dashboard unavailable</h1>
+            <p className="text-muted-foreground">{error}</p>
+            <div className="flex justify-center gap-3">
+              <Button asChild>
+                <Link href="/quiz">Go to Quiz</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/detection">Live Detection</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -121,7 +150,7 @@ export default function DashboardPage() {
               return (
                 <Card key={ls.level} className={`bg-card/50 border-border/50 hover:border-primary/30 transition-all`}>
                   <CardHeader>
-                    <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${meta.color}`}>
+                    <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-linear-to-br ${meta.color}`}>
                       <meta.icon className="h-6 w-6 text-foreground" />
                     </div>
                     <CardTitle className="text-lg flex items-center justify-between">
@@ -188,7 +217,7 @@ export default function DashboardPage() {
                     className={`flex items-center justify-between px-6 py-4 ${i !== data.recent_activity.length - 1 ? "border-b border-border/50" : ""}`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center bg-gradient-to-br ${LEVEL_META[rec.level as keyof typeof LEVEL_META]?.color}`}>
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center bg-linear-to-br ${LEVEL_META[rec.level as keyof typeof LEVEL_META]?.color}`}>
                         <Target className="h-4 w-4" />
                       </div>
                       <div>

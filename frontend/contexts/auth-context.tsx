@@ -34,16 +34,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Restore session from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("signlang_token")
-    const storedUser = localStorage.getItem("signlang_user")
-    if (stored && storedUser) {
-      setToken(stored)
-      setUser(JSON.parse(storedUser))
-    }
-    setLoading(false)
-  }, [])
+  const clearStoredSession = () => {
+    setUser(null)
+    setToken(null)
+    localStorage.removeItem("signlang_token")
+    localStorage.removeItem("signlang_user")
+  }
 
   const persist = (tok: string, u: User) => {
     setToken(tok)
@@ -51,6 +47,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("signlang_token", tok)
     localStorage.setItem("signlang_user", JSON.stringify(u))
   }
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    const restore = async () => {
+      try {
+        const stored = localStorage.getItem("signlang_token")
+        const storedUser = localStorage.getItem("signlang_user")
+        if (!stored || !storedUser) {
+          clearStoredSession()
+          return
+        }
+
+        setToken(stored)
+        setUser(JSON.parse(storedUser))
+
+        const res = await fetch(`${API}/auth/me`, {
+          headers: { Authorization: `Bearer ${stored}` },
+        })
+
+        if (!res.ok) {
+          clearStoredSession()
+          return
+        }
+
+        const liveUser: User = await res.json()
+        persist(stored, liveUser)
+      } catch {
+        clearStoredSession()
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void restore()
+  }, [])
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${API}/auth/login`, {
@@ -84,10 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(() => {
-    setUser(null)
-    setToken(null)
-    localStorage.removeItem("signlang_token")
-    localStorage.removeItem("signlang_user")
+    clearStoredSession()
   }, [])
 
   return (
