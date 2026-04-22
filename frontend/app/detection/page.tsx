@@ -139,22 +139,22 @@ export default function DetectionPage() {
     [detectionMode, getSentenceSessionId]
   )
 
-  const resetDynamicSession = useCallback(async () => {
+  const resetDynamicSession = useCallback(() => {
     if (detectionMode !== "dynamic") return
-    const sessionId = dynamicSessionRef.current
-    try {
-      await fetch(`${API}/predict/dynamic/reset`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId }),
-      })
-    } catch {
-      // No-op: if reset fails, a fresh session ID is generated below.
-    }
+
+    const previousSessionId = dynamicSessionRef.current
     dynamicSessionRef.current =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `dynamic-${Date.now()}`
+
+    void fetch(`${API}/predict/dynamic/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: previousSessionId }),
+    }).catch(() => {
+      // No-op: the frontend has already switched to a fresh session ID.
+    })
   }, [detectionMode])
 
   // ── Fetch model status on mount ───────────────────────────────────────────────
@@ -163,12 +163,20 @@ export default function DetectionPage() {
       setModelStatusLoading(true)
       setModelStatusError(null)
       try {
+        const healthRes = await fetch(`${API}/health`)
+        if (!healthRes.ok) {
+          throw new Error("backend-unreachable")
+        }
+
         const res = await fetch(`${API}/model/status?mode=${detectionMode}`)
         if (!res.ok) throw new Error(`Server responded ${res.status}`)
         const data: ModelStatus = await res.json()
         setModelStatus(data)
       } catch (e) {
-        setModelStatusError("Cannot reach backend. Make sure the server is running on port 8000.")
+        const message = e instanceof Error && e.message === "backend-unreachable"
+          ? "Cannot reach backend. Make sure the server is running on port 8000."
+          : "Backend is reachable, but the model status check failed. The backend is still up; retry after the model finishes loading."
+        setModelStatusError(message)
       } finally {
         setModelStatusLoading(false)
       }
@@ -192,6 +200,7 @@ export default function DetectionPage() {
 
   const disableCamera = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
+    intervalRef.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
@@ -292,6 +301,10 @@ export default function DetectionPage() {
   }, [detectionMode])
 
   const startDetection = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
     setIsDetecting(true)
     setDynamicProgress(null)
 
@@ -306,6 +319,7 @@ export default function DetectionPage() {
 
   const stopDetection = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current)
+    intervalRef.current = null
     setIsDetecting(false)
     setDynamicProgress(null)
     if (detectionMode === "dynamic") {
@@ -325,6 +339,7 @@ export default function DetectionPage() {
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
+      intervalRef.current = null
       streamRef.current?.getTracks().forEach((t) => t.stop())
       if (detectionMode === "dynamic") {
         resetDynamicSession()
@@ -355,16 +370,17 @@ export default function DetectionPage() {
       return (
         <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Checking model connection…
+          Checking backend and model status…
         </div>
       )
     }
     if (modelStatusError || !modelStatus) {
+      const isBackendDown = modelStatusError?.startsWith("Cannot reach backend")
       return (
         <div className="flex items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <XCircle className="h-4 w-4 shrink-0" />
           <span>
-            <strong>Backend unreachable.</strong> {modelStatusError}
+            <strong>{isBackendDown ? "Backend unreachable." : "Model status unavailable."}</strong> {modelStatusError}
           </span>
         </div>
       )

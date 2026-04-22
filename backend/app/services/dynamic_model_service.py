@@ -128,7 +128,7 @@ class _DynamicInferenceService:
         self._prediction_window = 5
         self._model_config: dict[str, Any] = {}
         self._label_map: dict[str, int] = {}
-        self._session_timestamps_ms: dict[str, int] = {}
+        self._timestamp_counter_ms = 0
         self._no_hand_streak: dict[str, int] = {}
         self._max_no_hand_gap = 8
 
@@ -174,7 +174,6 @@ class _DynamicInferenceService:
         self._is_trained_weights = False
         self._sequence_buffers.clear()
         self._prediction_buffers.clear()
-        self._session_timestamps_ms.clear()
         self._no_hand_streak.clear()
         self._model_config = {}
         self._label_map = {}
@@ -193,7 +192,6 @@ class _DynamicInferenceService:
     def reset_session(self, session_id: str) -> None:
         self._sequence_buffers.pop(session_id, None)
         self._prediction_buffers.pop(session_id, None)
-        self._session_timestamps_ms.pop(session_id, None)
         self._no_hand_streak.pop(session_id, None)
 
     def predict(self, image_bytes: bytes, session_id: str) -> dict[str, object]:
@@ -274,7 +272,7 @@ class _DynamicInferenceService:
 
     def _extract_landmarks(self, image_rgb: np.ndarray, session_id: str) -> tuple[np.ndarray, bool]:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-        timestamp_ms = self._next_timestamp_ms(session_id)
+        timestamp_ms = self._next_timestamp_ms()
         hand_results = self.hands_detector.detect_for_video(mp_image, timestamp_ms)
         pose_results = self.pose_detector.detect_for_video(mp_image, timestamp_ms) if self.pose_detector is not None else None
 
@@ -363,13 +361,9 @@ class _DynamicInferenceService:
         pose = mp_vision.PoseLandmarker.create_from_options(pose_options)
         return hands, pose
 
-    def _next_timestamp_ms(self, session_id: str) -> int:
-        current = self._session_timestamps_ms.get(session_id)
-        if current is None:
-            current = 0
-        else:
-            current += 33
-        self._session_timestamps_ms[session_id] = current
+    def _next_timestamp_ms(self) -> int:
+        current = self._timestamp_counter_ms
+        self._timestamp_counter_ms += 33
         return current
 
     @staticmethod
@@ -484,11 +478,8 @@ def shutdown_dynamic_model_service() -> None:
 
 
 def get_dynamic_model_status() -> dict[str, object]:
-    if dynamic_inference_service.model is None or dynamic_inference_service.hands_detector is None:
-        try:
-            dynamic_inference_service.initialize()
-        except Exception:
-            pass
+    # Status must stay read-only so a model probe cannot block or fail the
+    # health check path. Prediction endpoints still initialize lazily on demand.
     return dynamic_inference_service.status()
 
 
